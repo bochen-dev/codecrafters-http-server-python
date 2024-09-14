@@ -123,6 +123,16 @@ def main():
                         .set_body(echo)
                     )
 
+                case '/user-agent':
+                    user_agent = request.ci_headers.get('User-Agent'.lower(), '')
+                    response = (
+                        ResponseBuilder()
+                        .set_status_code(200)
+                        .set_header(("Content-Type", "text/plain"))
+                        .set_header(("Content-Length", str(len(user_agent))))
+                        .set_body(user_agent)
+                    )
+
                 case _:
                     response = ResponseBuilder().set_status_code(404)
 
