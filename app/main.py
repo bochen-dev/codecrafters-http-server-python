@@ -12,6 +12,11 @@ class Request:
     headers: dict[str, str]
     body: str
 
+    @property
+    def ci_headers(self) -> dict[str, str]:
+        # Case-insensitive headers
+        return {k.lower(): v for k, v in self.headers.items()}
+
     def __repr__(self):
         return f"Request(method={self.method}, path={self.path})"
 
