@@ -1,6 +1,22 @@
 import http
 import socket  # noqa: F401
+from dataclasses import dataclass
 from datetime import datetime
+
+
+@dataclass
+class Request:
+    method: str
+    path: str
+    version: str
+    headers: dict[str, str]
+    body: str
+
+    def __repr__(self):
+        return f"Request(method={self.method}, path={self.path})"
+
+    def __str__(self) -> str:
+        return f"[{self.method}] {self.path}"
 
 
 class ResponseBuilder:
@@ -58,7 +74,7 @@ def main():
 
     def parse_request(
         received_data: bytes,
-    ) -> tuple[str, str, str, dict[str, str], str]:
+    ) -> Request:
         """
         received_data
         > b'GET / HTTP/1.1\r\nHost: localhost:4221\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\n\r\n'
@@ -75,7 +91,7 @@ def main():
             key, value = header.split(": ")
             headers_dict[key] = value
 
-        return method, path, version, headers_dict, body
+        return Request(method, path, version, headers_dict, body)
 
     with socket.create_server(("localhost", 4221), reuse_port=True) as server_socket:
 
@@ -85,11 +101,10 @@ def main():
             received_data = conn.recv(1024)
             # print("Received: " + str(received_data))
 
-            parsed_data = parse_request(received_data)
+            request = parse_request(received_data)
             # print("Parsed: " + str(parsed_data))
-            method, path, version, headers_dict, body = parsed_data
 
-            match path:
+            match request.path:
                 case "/":
                     response = ResponseBuilder().set_status_code(200)
 
@@ -106,7 +121,7 @@ def main():
                 case _:
                     response = ResponseBuilder().set_status_code(404)
 
-            print(f"{datetime.now()} [{method}] {path} {response.status_code}")
+            print(f"{datetime.now()} {request} {response.status_code}")
             response_data = response.build()
             # print("Response: " + str(response_data))
             conn.sendall(response_data)
