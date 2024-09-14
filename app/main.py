@@ -2,6 +2,7 @@ import http
 import socket  # noqa: F401
 from dataclasses import dataclass
 from datetime import datetime
+from threading import Thread
 
 
 @dataclass
@@ -73,75 +74,89 @@ class ResponseBuilder:
         return status_line + str_headers.encode() + self.body
 
 
+def client_thread(conn: socket.socket, addr: tuple[str, int]):
+    print(f"Connected by {addr}")
+    handle_request(conn)
+    print("Connection closed by client")
+
+
+def handle_request(conn: socket.socket):
+    try:
+        if not (received_data := conn.recv(1024)):
+            # No data received means the client has closed the connection
+            return
+
+        request = parse_request(received_data)
+
+        match request.path:
+            case "/":
+                response = ResponseBuilder().set_status_code(200)
+
+            case s if s.startswith("/echo/"):
+                echo = s[len("/echo/") :]
+                response = (
+                    ResponseBuilder()
+                    .set_status_code(200)
+                    .set_header(("Content-Type", "text/plain"))
+                    .set_header(("Content-Length", str(len(echo))))
+                    .set_body(echo)
+                )
+
+            case "/user-agent":
+                user_agent = request.ci_headers.get("User-Agent".lower(), "")
+                response = (
+                    ResponseBuilder()
+                    .set_status_code(200)
+                    .set_header(("Content-Type", "text/plain"))
+                    .set_header(("Content-Length", str(len(user_agent))))
+                    .set_body(user_agent)
+                )
+
+            case _:
+                response = ResponseBuilder().set_status_code(404)
+
+        print(f"{datetime.now()} {request} {response.status_code}")
+        response_data = response.build()
+        conn.sendall(response_data)
+    finally:
+        conn.close()
+
+
+def parse_request(
+    received_data: bytes,
+) -> Request:
+    """
+    received_data
+    > b'GET / HTTP/1.1\r\nHost: localhost:4221\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\n\r\n'
+    """
+
+    parts = received_data.decode().split("\r\n")
+
+    start_line, *headers, _, body = parts
+
+    method, path, version = start_line.split(" ")
+
+    headers_dict: dict[str, str] = {}
+    for header in headers:
+        key, value = header.split(": ")
+        headers_dict[key] = value
+
+    return Request(method, path, version, headers_dict, body)
+
+
 def main():
-    # You can use print statements as follows for debugging, they'll be visible when running tests.
-    print("Logs from your program will appear here!")
-
-    def parse_request(
-        received_data: bytes,
-    ) -> Request:
-        """
-        received_data
-        > b'GET / HTTP/1.1\r\nHost: localhost:4221\r\nUser-Agent: curl/8.7.1\r\nAccept: */*\r\n\r\n'
-        """
-
-        parts = received_data.decode().split("\r\n")
-
-        start_line, *headers, _, body = parts
-
-        method, path, version = start_line.split(" ")
-
-        headers_dict: dict[str, str] = {}
-        for header in headers:
-            key, value = header.split(": ")
-            headers_dict[key] = value
-
-        return Request(method, path, version, headers_dict, body)
 
     with socket.create_server(("localhost", 4221), reuse_port=True) as server_socket:
+        print("Server started at http://localhost:4221")
 
-        while True:
-            conn, addr = server_socket.accept()  # wait for client
-
-            received_data = conn.recv(1024)
-            # print("Received: " + str(received_data))
-
-            request = parse_request(received_data)
-            # print("Parsed: " + str(parsed_data))
-
-            match request.path:
-                case "/":
-                    response = ResponseBuilder().set_status_code(200)
-
-                case s if s.startswith("/echo/"):
-                    echo = s[len("/echo/") :]
-                    response = (
-                        ResponseBuilder()
-                        .set_status_code(200)
-                        .set_header(("Content-Type", "text/plain"))
-                        .set_header(("Content-Length", str(len(echo))))
-                        .set_body(echo)
-                    )
-
-                case '/user-agent':
-                    user_agent = request.ci_headers.get('User-Agent'.lower(), '')
-                    response = (
-                        ResponseBuilder()
-                        .set_status_code(200)
-                        .set_header(("Content-Type", "text/plain"))
-                        .set_header(("Content-Length", str(len(user_agent))))
-                        .set_body(user_agent)
-                    )
-
-                case _:
-                    response = ResponseBuilder().set_status_code(404)
-
-            print(f"{datetime.now()} {request} {response.status_code}")
-            response_data = response.build()
-            # print("Response: " + str(response_data))
-            conn.sendall(response_data)
-
-            conn.close()
+        try:
+            while True:
+                conn, addr = server_socket.accept()  # wait for client
+                Thread(target=client_thread, args=(conn, addr), daemon=True).start()
+        except KeyboardInterrupt:
+            print("\nServer stopped")
+        finally:
+            server_socket.close()
 
 
 if __name__ == "__main__":
