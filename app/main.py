@@ -89,6 +89,20 @@ def main():
                 case "/":
                     response = ResponseBuilder().set_status_code(200)
 
+                case s if s.startswith("/echo/"):
+                    echo = s[len("/echo/") :]
+                    response = (
+                        ResponseBuilder()
+                        .set_status_code(200)
+                        .set_headers(
+                            {
+                                "Content-Type": "text/plain",
+                                "Content-Length": str(len(echo)),
+                            }
+                        )
+                        .set_body(echo)
+                    )
+
                 case _:
                     response = ResponseBuilder().set_status_code(404)
 
