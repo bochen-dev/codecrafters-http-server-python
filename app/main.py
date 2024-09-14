@@ -30,7 +30,6 @@ class ResponseBuilder:
     def set_headers(self, headers: dict[str, str]):
         for key, value in headers.items():
             self.headers += f"{key}: {value}\r\n".encode()
-        self.headers += b"\r\n"
         return self
 
     def set_body(self, body: str):
@@ -45,7 +44,7 @@ class ResponseBuilder:
 
         status_line = f"{self.version} {self.status_code} {reason_phrase}\r\n".encode()
 
-        return status_line + self.headers + self.body
+        return status_line + self.headers + b"\r\n" + self.body
 
 
 def main():
@@ -107,7 +106,9 @@ def main():
                     response = ResponseBuilder().set_status_code(404)
 
             print(f"{datetime.now()} [{method}] {path} {response.status_code}")
-            conn.sendall(response.build())
+            response_data = response.build()
+            # print("Response: " + str(response_data))
+            conn.sendall(response_data)
 
             conn.close()
 
