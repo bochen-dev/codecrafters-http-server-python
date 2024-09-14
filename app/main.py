@@ -19,17 +19,17 @@ class ResponseBuilder:
 
     def __init__(self):
         self.version = "HTTP/1.1"
-        self.status_code = b""
-        self.headers = b""
-        self.body = b""
+        self.status_code: int
+        self.headers: dict[str, str] = {}
+        self.body: bytes = b""
 
     def set_status_code(self, status_code: int):
         self.status_code = status_code
         return self
 
-    def set_headers(self, headers: dict[str, str]):
-        for key, value in headers.items():
-            self.headers += f"{key}: {value}\r\n".encode()
+    def set_header(self, header: tuple[str, str]):
+        k, v = header
+        self.headers[k] = v
         return self
 
     def set_body(self, body: str):
@@ -44,7 +44,12 @@ class ResponseBuilder:
 
         status_line = f"{self.version} {self.status_code} {reason_phrase}\r\n".encode()
 
-        return status_line + self.headers + b"\r\n" + self.body
+        str_headers = ""
+        for key, value in self.headers.items():
+            str_headers += f"{key}: {value}\r\n"
+        str_headers += "\r\n"
+
+        return status_line + str_headers.encode() + self.body
 
 
 def main():
@@ -93,12 +98,8 @@ def main():
                     response = (
                         ResponseBuilder()
                         .set_status_code(200)
-                        .set_headers(
-                            {
-                                "Content-Type": "text/plain",
-                                "Content-Length": str(len(echo)),
-                            }
-                        )
+                        .set_header(("Content-Type", "text/plain"))
+                        .set_header(("Content-Length", str(len(echo))))
                         .set_body(echo)
                     )
 
