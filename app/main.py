@@ -27,6 +27,16 @@ class Request:
     def get_header(self, key: str) -> str:
         return self.ci_headers.get(key.lower(), "")
 
+    def get_compression_scheme(self) -> str | None:
+        if not (header_accept_encoding := self.get_header("Accept-Encoding")):
+            return None
+        else:
+            for scheme in header_accept_encoding.split(","):
+                if scheme.strip() in SUPPORTED_COMPRESSIONS:
+                    return scheme.strip()
+            else:
+                return None
+
     def __repr__(self):
         return f"Request(method={self.method}, path={self.path})"
 
@@ -97,12 +107,7 @@ def handle_request(conn: socket.socket):
 
         request = parse_request(received_data)
 
-        if (
-            header_accept_encoding := request.get_header("Accept-Encoding")
-        ) in SUPPORTED_COMPRESSIONS:
-            compression = header_accept_encoding
-        else:
-            compression = None
+        compression = request.get_compression_scheme()
 
         match request.method, request.path:
             case ("GET", "/"):
