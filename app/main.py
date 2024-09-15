@@ -1,4 +1,5 @@
 import argparse
+import gzip
 import http
 import os
 import socket  # noqa: F401
@@ -27,15 +28,15 @@ class Request:
     def get_header(self, key: str) -> str:
         return self.ci_headers.get(key.lower(), "")
 
-    def get_compression_scheme(self) -> str | None:
+    def get_compression_scheme(self) -> str:
         if not (header_accept_encoding := self.get_header("Accept-Encoding")):
-            return None
+            return ""
         else:
             for scheme in header_accept_encoding.split(","):
                 if scheme.strip() in SUPPORTED_COMPRESSIONS:
                     return scheme.strip()
             else:
-                return None
+                return ""
 
     def __repr__(self):
         return f"Request(method={self.method}, path={self.path})"
@@ -73,8 +74,17 @@ class ResponseBuilder:
         self.headers[k] = v
         return self
 
-    def set_body(self, body: str):
-        self.body = body.encode()
+    def set_body(self, body: str, *, compression: str = ""):
+
+        match compression:
+            case "gzip":
+                self.body = gzip.compress(body.encode())
+                self.set_header(("Content-Encoding", compression))
+            case _:
+                self.body = body.encode()
+
+        self.set_header(("Content-Length", str(len(self.body))))
+
         return self
 
     def build(self) -> bytes:
@@ -119,8 +129,7 @@ def handle_request(conn: socket.socket):
                     ResponseBuilder()
                     .set_status_code(200)
                     .set_header(("Content-Type", "text/plain"))
-                    .set_header(("Content-Length", str(len(echo))))
-                    .set_body(echo)
+                    .set_body(echo, compression=compression)
                 )
 
             case ("GET", "/user-agent"):
@@ -129,8 +138,7 @@ def handle_request(conn: socket.socket):
                     ResponseBuilder()
                     .set_status_code(200)
                     .set_header(("Content-Type", "text/plain"))
-                    .set_header(("Content-Length", str(len(user_agent))))
-                    .set_body(user_agent)
+                    .set_body(user_agent, compression=compression)
                 )
 
             case ("GET", s) if s.startswith("/files/"):
@@ -148,8 +156,7 @@ def handle_request(conn: socket.socket):
                                 .set_header(
                                     ("Content-Type", "application/octet-stream")
                                 )
-                                .set_header(("Content-Length", str(len(file_content))))
-                                .set_body(file_content)
+                                .set_body(file_content, compression=compression)
                             )
                     except FileNotFoundError:
                         response = ResponseBuilder().set_status_code(404)
@@ -171,10 +178,6 @@ def handle_request(conn: socket.socket):
                 response = ResponseBuilder().set_status_code(404)
 
         print(f"{datetime.now()} {request} {response.status_code}")
-
-        if compression:
-            # TODO: Compress response body
-            response.set_header(("Content-Encoding", compression))
 
         response_data = response.build()
         conn.sendall(response_data)
