@@ -134,6 +134,19 @@ def handle_request(conn: socket.socket):
                     except FileNotFoundError:
                         response = ResponseBuilder().set_status_code(404)
 
+            case 'POST', s if s.startswith("/files/"):
+                if not (file_name := s[len("/files/") :]):
+                    response = ResponseBuilder().set_status_code(404)
+                else:
+                    try:
+                        file_path = os.path.join(file_dir, file_name)
+                        print(f"File path: {file_path}")
+                        with open(file_path, "wb") as file:
+                            file.write(request.body.encode())
+                            response = ResponseBuilder().set_status_code(201)
+                    except FileNotFoundError:
+                        response = ResponseBuilder().set_status_code(404)
+
             case _:
                 response = ResponseBuilder().set_status_code(404)
 
