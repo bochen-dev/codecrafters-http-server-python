@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from threading import Thread
 
-file_dir: str = '.'
+file_dir: str = "."
+
+SUPPORTED_COMPRESSIONS = ("gzip",)
+
 
 @dataclass
 class Request:
@@ -20,6 +23,9 @@ class Request:
     def ci_headers(self) -> dict[str, str]:
         # Case-insensitive headers
         return {k.lower(): v for k, v in self.headers.items()}
+
+    def get_header(self, key: str) -> str:
+        return self.ci_headers.get(key.lower(), "")
 
     def __repr__(self):
         return f"Request(method={self.method}, path={self.path})"
@@ -91,11 +97,18 @@ def handle_request(conn: socket.socket):
 
         request = parse_request(received_data)
 
+        if (
+            header_accept_encoding := request.get_header("Accept-Encoding")
+        ) in SUPPORTED_COMPRESSIONS:
+            compression = header_accept_encoding
+        else:
+            compression = None
+
         match request.method, request.path:
-            case 'GET', '/':
+            case ("GET", "/"):
                 response = ResponseBuilder().set_status_code(200)
 
-            case 'GET', s if s.startswith("/echo/"):
+            case ("GET", s) if s.startswith("/echo/"):
                 echo = s[len("/echo/") :]
                 response = (
                     ResponseBuilder()
@@ -105,8 +118,8 @@ def handle_request(conn: socket.socket):
                     .set_body(echo)
                 )
 
-            case 'GET', '/user-agent':
-                user_agent = request.ci_headers.get("User-Agent".lower(), "")
+            case ("GET", "/user-agent"):
+                user_agent = request.get_header("User-Agent")
                 response = (
                     ResponseBuilder()
                     .set_status_code(200)
@@ -115,7 +128,7 @@ def handle_request(conn: socket.socket):
                     .set_body(user_agent)
                 )
 
-            case 'GET', s if s.startswith("/files/"):
+            case ("GET", s) if s.startswith("/files/"):
                 if not (file_name := s[len("/files/") :]):
                     response = ResponseBuilder().set_status_code(404)
                 else:
@@ -127,14 +140,16 @@ def handle_request(conn: socket.socket):
                             response = (
                                 ResponseBuilder()
                                 .set_status_code(200)
-                                .set_header(("Content-Type", "application/octet-stream"))
+                                .set_header(
+                                    ("Content-Type", "application/octet-stream")
+                                )
                                 .set_header(("Content-Length", str(len(file_content))))
                                 .set_body(file_content)
                             )
                     except FileNotFoundError:
                         response = ResponseBuilder().set_status_code(404)
 
-            case 'POST', s if s.startswith("/files/"):
+            case ("POST", s) if s.startswith("/files/"):
                 if not (file_name := s[len("/files/") :]):
                     response = ResponseBuilder().set_status_code(404)
                 else:
@@ -151,6 +166,11 @@ def handle_request(conn: socket.socket):
                 response = ResponseBuilder().set_status_code(404)
 
         print(f"{datetime.now()} {request} {response.status_code}")
+
+        if compression:
+            # TODO: Compress response body
+            response.set_header(("Content-Encoding", compression))
+
         response_data = response.build()
         conn.sendall(response_data)
     finally:
