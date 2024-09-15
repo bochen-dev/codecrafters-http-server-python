@@ -1,9 +1,12 @@
+import argparse
 import http
+import os
 import socket  # noqa: F401
 from dataclasses import dataclass
 from datetime import datetime
 from threading import Thread
 
+file_dir: str = '.'
 
 @dataclass
 class Request:
@@ -88,11 +91,11 @@ def handle_request(conn: socket.socket):
 
         request = parse_request(received_data)
 
-        match request.path:
-            case "/":
+        match request.method, request.path:
+            case 'GET', '/':
                 response = ResponseBuilder().set_status_code(200)
 
-            case s if s.startswith("/echo/"):
+            case 'GET', s if s.startswith("/echo/"):
                 echo = s[len("/echo/") :]
                 response = (
                     ResponseBuilder()
@@ -102,7 +105,7 @@ def handle_request(conn: socket.socket):
                     .set_body(echo)
                 )
 
-            case "/user-agent":
+            case 'GET', '/user-agent':
                 user_agent = request.ci_headers.get("User-Agent".lower(), "")
                 response = (
                     ResponseBuilder()
@@ -111,6 +114,23 @@ def handle_request(conn: socket.socket):
                     .set_header(("Content-Length", str(len(user_agent))))
                     .set_body(user_agent)
                 )
+
+            case 'GET', s if s.startswith("/files/"):
+                file_name = s[len("/files/") :]
+                try:
+                    file_path = os.path.join(file_dir, file_name)
+                    print(f"File path: {file_path}")
+                    with open(file_path, "rb") as file:
+                        file_content = file.read().decode()
+                        response = (
+                            ResponseBuilder()
+                            .set_status_code(200)
+                            .set_header(("Content-Type", "application/octet-stream"))
+                            .set_header(("Content-Length", str(len(file_content))))
+                            .set_body(file_content)
+                        )
+                except FileNotFoundError:
+                    response = ResponseBuilder().set_status_code(404)
 
             case _:
                 response = ResponseBuilder().set_status_code(404)
@@ -160,4 +180,10 @@ def main():
 
 
 if __name__ == "__main__":
+    arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("--directory", default=".")
+    args = arg_parser.parse_args()
+
+    file_dir = args.directory
+
     main()
