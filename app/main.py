@@ -116,21 +116,23 @@ def handle_request(conn: socket.socket):
                 )
 
             case 'GET', s if s.startswith("/files/"):
-                file_name = s[len("/files/") :]
-                try:
-                    file_path = os.path.join(file_dir, file_name)
-                    print(f"File path: {file_path}")
-                    with open(file_path, "rb") as file:
-                        file_content = file.read().decode()
-                        response = (
-                            ResponseBuilder()
-                            .set_status_code(200)
-                            .set_header(("Content-Type", "application/octet-stream"))
-                            .set_header(("Content-Length", str(len(file_content))))
-                            .set_body(file_content)
-                        )
-                except FileNotFoundError:
+                if not (file_name := s[len("/files/") :]):
                     response = ResponseBuilder().set_status_code(404)
+                else:
+                    try:
+                        file_path = os.path.join(file_dir, file_name)
+                        print(f"File path: {file_path}")
+                        with open(file_path, "rb") as file:
+                            file_content = file.read().decode()
+                            response = (
+                                ResponseBuilder()
+                                .set_status_code(200)
+                                .set_header(("Content-Type", "application/octet-stream"))
+                                .set_header(("Content-Length", str(len(file_content))))
+                                .set_body(file_content)
+                            )
+                    except FileNotFoundError:
+                        response = ResponseBuilder().set_status_code(404)
 
             case _:
                 response = ResponseBuilder().set_status_code(404)
